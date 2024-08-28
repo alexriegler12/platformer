@@ -1,13 +1,19 @@
 #include <SDL/SDL.h>
+#include <stdbool.h>
 #include "imageloader.h"
 #include "testlevel.h"
 #define SCR_H 240
 #define SCR_W 320
 #define BLOCKPERSCRNH SCR_H/16
 #define BLOCKPERSCRNW SCR_W/16
-int up,down,left,right,start;
+int colis;
+bool draw = false;
+int up,down,left,right,start,chrt,run;
+int ctr = 0;
 int inputStateChanged;
 int camx=0,camy=0;
+int ctr3 = 0;
+int ctr4 = 0;
 unsigned int lastTime=0;
 float delta;
 typedef struct vector2{
@@ -39,27 +45,34 @@ typedef struct entity{
 }Entity;
 SDL_Surface *screen;
     SDL_Surface *playerspr;
+	SDL_Surface *enemyspr;
 	SDL_Surface *tiles;
+	SDL_Surface *bananaspr;
+	
 	SDL_Surface *backg;
 	Entity player;
+	Entity enem;
+	Entity banana;
 void calculateRectFromBlockNum(int num,int mapw, int blockd,SDL_Rect* r){
 		r->x=(num%mapw)*blockd;
 		r->y=(num/mapw)*blockd;
 		r->w=blockd;
 		r->h=blockd;
 }
+
 void drawMapMainLayer(){
 		SDL_Rect srcr,dstr;
 		int startheight=camy/16;
 		int startwidth=camx/16;
 		int endheight=((camy+SCR_H)/16)+1<LEVEL_HEIGHT?((camy+SCR_H)/16)+1:LEVEL_HEIGHT;
-		int endwidth=((camx+SCR_W)/16)+1<LEVEL_WIDTH?((camx+SCR_W)/16)+1:LEVEL_WIDTH;
+		int endwidth = ((camx + SCR_W) / 16) + 2 < LEVEL_WIDTH ? ((camx + SCR_W) / 16) + 2 : LEVEL_WIDTH;
+
 		for(int i=startheight;i<endheight;i++){
 			for(int j=startwidth;j<endwidth;j++){
 				
 				calculateRectFromBlockNum(level[i*LEVEL_WIDTH+j],8,16,&srcr);
 				
-				dstr.x=(j*16)-camx;
+				dstr.x=(j*16)-camx -15;
 				dstr.y=(i*16)-camy;
 				if(srcr.x!=0||srcr.y!=0){
 					printf("Block coords in tilemap: x:%i y:%i\n",srcr.x,srcr.y);
@@ -68,6 +81,7 @@ void drawMapMainLayer(){
 				SDL_BlitSurface( tiles, &srcr, screen, &dstr );
 			}
 		}
+		
 }
 void initPlayer(){
 	player.pos.x=0;
@@ -84,8 +98,52 @@ void initPlayer(){
 	player.col.offset.y=0;
 	player.col.dim.x=48;
 	player.col.dim.y=32;
+	/*player.col.offset.x=25;
+	player.col.offset.y=6;
+	player.col.dim.x=50;
+	player.col.dim.y=26;*/
 }
-void drawEntity(Entity *e){
+void initBanana(){
+	banana.pos.x=150;
+	banana.pos.y=450;
+	banana.numanim=1;
+	banana.anims[0].pos.x=0;
+	banana.anims[0].pos.y=0;
+	banana.anims[0].dim.x=32;
+	banana.anims[0].dim.y=32;
+	banana.curanim=0;
+	banana.health=100;
+	banana.sprite=bananaspr;
+	banana.col.offset.x=16;
+	banana.col.offset.y=0;
+	banana.col.dim.x=48;
+	banana.col.dim.y=32;
+	/*player.col.offset.x=25;
+	player.col.offset.y=6;
+	player.col.dim.x=50;
+	player.col.dim.y=26;*/
+}
+
+
+void drawEntity(Entity *e) {
+	if (e->sprite == NULL) {
+        printf("Entity sprite is NULL.\n");
+        return;
+    }
+    SDL_Rect srcr, dstr;
+    dstr.x = e->pos.x - camx;
+    dstr.y = e->pos.y - camy;
+    srcr.x = e->anims[e->curanim].pos.x;
+    srcr.y = e->anims[e->curanim].pos.y;
+    srcr.w = e->anims[e->curanim].dim.x;
+    srcr.h = e->anims[e->curanim].dim.y;
+    SDL_BlitSurface(e->sprite, &srcr, screen, &dstr);
+	
+
+}
+
+
+/*void drawEntity2(Entity *e){
 	SDL_Rect srcr,dstr;
 	dstr.x=e->pos.x-camx;
 	dstr.y=e->pos.y-camy;
@@ -93,8 +151,8 @@ void drawEntity(Entity *e){
 	srcr.y=e->anims[e->curanim].pos.y;
 	srcr.w=e->anims[e->curanim].dim.x;
 	srcr.h=e->anims[e->curanim].dim.y;
-	SDL_BlitSurface( playerspr, &srcr, screen,&dstr );
-}
+	SDL_BlitSurface( playerspr2, &srcr, screen,&dstr );
+}*/
 void centerPlayer(){
 	camx=player.pos.x-(SCR_W/2);
 	if(camx<0){
@@ -121,8 +179,10 @@ void drawBackground(){
 }
 
 
+
 void checkEntityGroundCol(Entity *e){
 	int i, x1, x2, y1, y2;
+	int colis = 1;
 	Vector2f entpos;
 	entpos.x=(e->pos.x)+(e->col.offset.x);
 	entpos.y=(e->pos.y)+(e->col.offset.y);
@@ -144,7 +204,8 @@ void checkEntityGroundCol(Entity *e){
                 if ((level[y1*LEVEL_WIDTH+x2] != 0) || (level[y2*LEVEL_WIDTH+x2]!=0))
                 {
                     /* Place the player as close to the solid tile as possible */
-
+					
+					colis = 1;
                     e->pos.x = (x2 * 16)-e->col.offset.x;
 
                     e->pos.x -= e->col.dim.x + 1;
@@ -160,6 +221,7 @@ void checkEntityGroundCol(Entity *e){
                 if ((level[y1*LEVEL_WIDTH+x1] != 0) || (level[y2*LEVEL_WIDTH+x1]!=0))
                 {
                     /* Place the player as close to the solid tile as possible */
+					colis = 2;
 
                     e->pos.x = ((x1 + 1) * 16)-e->col.offset.x;
 
@@ -179,6 +241,7 @@ void checkEntityGroundCol(Entity *e){
         {
             i = e->col.dim.y;
         }
+		//return colis;
     }
 
 	i = e->col.dim.x > 16 ? 16 : e->col.dim.x;
@@ -197,8 +260,9 @@ void checkEntityGroundCol(Entity *e){
 
                 if ((level[y2*LEVEL_WIDTH+x1] != 0) || (level[y2*LEVEL_WIDTH+x2]!=0))
                 {
+					enem.speed.x == 0;
                     /* Place the player as close to the solid tile as possible */
-
+colis = 1;
                     e->pos.y = (y2 * 16)-e->col.offset.y;
 
                     e->pos.y -= e->col.dim.y;
@@ -215,6 +279,7 @@ void checkEntityGroundCol(Entity *e){
                 if ((level[y1*LEVEL_WIDTH+x1] != 0) || (level[y1*LEVEL_WIDTH+x2]!=0))
                 {
                     /* Place the player as close to the solid tile as possible */
+					colis = 2;
 
                     e->pos.y = ((y1 + 1) * 16)-e->col.offset.y;
 
@@ -249,12 +314,14 @@ void checkEntityGroundCol(Entity *e){
 }
 
 
-void doPlayer(){
+
+void doPlayer(int run){
 	player.speed.x=0;
 	player.speed.y+=700*delta;
 	if(player.speed.y>=200){
 		player.speed.y=200;
 	}
+	if(run == 0){
 	if(right){
 		player.speed.x=150;
 	}
@@ -266,6 +333,20 @@ void doPlayer(){
 			player.speed.y=-300;
 		}
 	}
+	}else{
+		if(right){
+			player.speed.x=250;
+		}
+		if(left){
+			player.speed.x=-250;
+		}
+		if(up){
+			if(player.onground){
+				player.speed.y=-350;
+			}
+		}
+	}
+
 	checkEntityGroundCol(&player);
 	/*if(down){
 		player.pos.y+=1;
@@ -273,13 +354,124 @@ void doPlayer(){
 	
 	
 }
+
+void initEnem(){
+	
+	
+	enem.pos.x=1;
+	enem.pos.y=300;
+	enem.numanim=2;
+	enem.anims[0].pos.x=64;
+	enem.anims[0].pos.y=0;
+	enem.anims[0].dim.x=64;
+	enem.anims[0].dim.y=60;
+	enem.curanim=0;
+	enem.health=100;
+	enem.sprite= enemyspr;
+	enem.col.offset.x=0;
+	enem.col.offset.y=0;
+	enem.col.dim.x=48;
+	enem.col.dim.y=64;
+	
+}
+static int lasty = 0;  // Static variable to retain its value between frames
+static int ctr2 = 0;   // Static variable to retain its value between frames
+
+void doEnemy() {
+    static int direction = 1; // 1 for moving right, -1 for moving left
+	static unsigned int lastFrameTime = 0; // Zeitstempel der letzten Animationsänderung
+    unsigned int currentTime = SDL_GetTicks(); 
+    // Apply gravity
+    enem.speed.y+=700*delta;
+	if(enem.speed.y>=200){
+		enem.speed.y=200;
+	}
+
+    // Set horizontal speed based on current direction
+    enem.speed.x = direction * 60; // 60 units/sec speed
+
+    // Store the current position before moving
+    float previousX = enem.pos.x;
+
+    // Check for ground and wall collisions
+    checkEntityGroundCol(&enem);
+    // If the X position hasn't changed or speed.x was set to 0 (collision with wall)
+    if ( enem.speed.x == 0) {
+		lastFrameTime = currentTime;
+        direction = -direction; // Reverse direction
+        enem.speed.x = direction * 60; // Apply new direction speed
+    }
+
+
+    // Draw the enemy
+    drawEntity(&enem);
+}
+
+void doBanana() {
+    static unsigned int lastFrameTime = 0; // Zeitstempel der letzten Animationsänderung
+    unsigned int currentTime = SDL_GetTicks(); // Aktuelle Zeit in Millisekunden
+
+    if (player.pos.x < banana.pos.x) {
+        if ((banana.pos.x - player.pos.x <= 3) && (banana.pos.y - player.pos.y <= 3)) {
+            banana.pos.y = -3000;
+            draw = true;
+        } else if (draw == false) {
+            // Überprüfen, ob genug Zeit vergangen ist, um den nächsten Frame anzuzeigen
+            if (currentTime > lastFrameTime + 100) { // 100 ms zwischen den Frames
+                banana.anims[0].pos.x += 32;
+                lastFrameTime = currentTime; // Zeitstempel aktualisieren
+                ctr4++;
+            }
+
+            if (ctr4 == 7) {
+                banana.anims[0].pos.x = 32;
+                ctr4 = 0;
+            }
+
+            // Zeichne die Banane
+            drawEntity(&banana);
+        }
+    } else {
+        if ((player.pos.x - banana.pos.x <= 3) && (banana.pos.y - player.pos.y <= 3)) {
+            banana.pos.y = -3000;
+            draw = true;
+        } else if (draw == false) {
+            // Überprüfen, ob genug Zeit vergangen ist, um den nächsten Frame anzuzeigen
+            if (currentTime > lastFrameTime + 100) { // 100 ms zwischen den Frames
+                banana.anims[0].pos.x += 32;
+                lastFrameTime = currentTime; // Zeitstempel aktualisieren
+                ctr4++;
+            }
+
+            if (ctr4 == 6) {
+                banana.anims[0].pos.x = 32;
+                ctr4 = 0;
+            }
+
+            // Zeichne die Banane
+            drawEntity(&banana);
+        }
+    }
+}
 void calcDelta(){
 	unsigned int newtime=SDL_GetTicks();
 	delta=(float)(newtime-lastTime)/1000;
 	lastTime=newtime;
+	// Cap delta time to prevent large jumps in player movement
+    float maxDelta = 0.016f; // Cap delta time to approximately 60 FPS (1/60)
+    if (delta > maxDelta) {
+        delta = maxDelta;
+    }
 }
+void changeChrt(){
+
+	player.anims[0].pos.x=64;
+	player.anims[0].dim.x=64;
+}
+
 int main(int argc , char **argv)
 {
+	printf("s");
     //SDL_Window *window;
     
     SDL_Event event;
@@ -288,15 +480,27 @@ int main(int argc , char **argv)
         fprintf(stderr,"SDL error %s\n", SDL_GetError());
         return 2;
     }
-    
+    bananaspr = loadQoi("entities.qoi");
     playerspr=loadQoi("PLAYER.qoi");
+	enemyspr=loadQoi("PLAYER2.qoi");
+	if (!enemyspr) {
+    printf("Failed to load enemy sprite.\n");
+    // You may want to exit or handle this error appropriately.
+	}
+	
+	
 	tiles=loadQoi("tiles.qoi");
 	backg=loadJpeg("JUNGLE.jpg");
     //window = SDL_CreateWindow("SSFN normal renderer bitmap font test",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,800,600,0);
     screen = SDL_SetVideoMode(SCR_W,SCR_H,32,SDL_SWSURFACE);
     //memset(screen->pixels, 0xF8, screen->pitch*screen->h);
 	initPlayer();
+	initEnem();
+	initBanana();
 	SDL_Rect srcr,dstr;
+	chrt = 1;
+	run = 0;
+	int le = 0;
 	while(1){
 		while (SDL_PollEvent(&event)){
 			switch(event.type){
@@ -305,9 +509,11 @@ int main(int argc , char **argv)
 					switch(event.key.keysym.sym){
 						case SDLK_RIGHT:
 							right=1;
+							le = 0;
 							break;
 						case SDLK_LEFT:
 							left=1;
+							le = 1;
 							break;
 						case SDLK_UP:
 							up=1;
@@ -315,9 +521,20 @@ int main(int argc , char **argv)
 						case SDLK_DOWN:
 							down=1;
 							break;
-						case SDLK_SPACE:
+						/*case SDLK_SPACE:
 							start=1;
+							break;*/
+						case SDLK_F1:
+							
+							chrt = chrt * -1;
 							break;
+						case SDLK_F2:
+								player.pos.x=0;
+								player.pos.y=300;
+							break;
+						case SDLK_SPACE:
+								run = 1;
+						break;
 						
 					}
 					break;
@@ -329,6 +546,7 @@ int main(int argc , char **argv)
 							break;
 						case SDLK_LEFT:
 							left=0;
+							
 							break;
 						case SDLK_UP:
 							up=0;
@@ -336,9 +554,12 @@ int main(int argc , char **argv)
 						case SDLK_DOWN:
 							down=0;
 							break;
-						case SDLK_SPACE:
+						/*case SDLK_SPACE:
 							start=0;
-							break;
+							break;*/
+							case SDLK_SPACE:
+								run = 0;
+						break;
 						
 					}
 					break;    
@@ -354,18 +575,49 @@ int main(int argc , char **argv)
 				 
 			}
 			
-			 
-			 
-			 
-			 
+			 	 
+		}
+		if(player.pos.y > 500){
+				SDL_Quit();
 		}
 		calcDelta();
-		doPlayer();
+		doEnemy();
+		doPlayer(run);
+		
+		
 		centerPlayer();
 		drawBackground();
 		drawMapMainLayer();
+		doBanana();
+		drawEntity(&enem);
+		if(chrt == 1){
+			
+			
+			if(le == 0){
+			changeChrt();
+			player.anims[0].pos.y=0;
+			drawEntity(&player);
+			}else if(le == 1){
+			changeChrt();
+			player.anims[0].pos.y=34;
+			
+			drawEntity(&player);
+			}
+		}else{
+		changeChrt();
+		if(le == 0){
+		player.anims[0].pos.y=0;	
+		player.anims[0].pos.x=0;
 		drawEntity(&player);
+		}else if(le == 1){
+		player.anims[0].pos.x=15;
+		player.anims[0].pos.y=34;
+		drawEntity(&player);
+		}
+		}
 		SDL_Flip( screen );
+		//SDL_Delay(10);
+		
 		//camx++;
 	}
     //Update Screen
@@ -376,6 +628,10 @@ int main(int argc , char **argv)
     //   event.type != SDL_MOUSEBUTTONDOWN && event.type != SDL_KEYDOWN);
 
     //SDL_DestroyWindow(window);
+    SDL_FreeSurface(playerspr);  
+    SDL_FreeSurface(tiles);
+    SDL_FreeSurface(backg);
+
     SDL_Quit();
     return 0;
 }
