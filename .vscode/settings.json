@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "audiosys.h": "c",
+        "2badpcm.h": "c"
+    }
+}

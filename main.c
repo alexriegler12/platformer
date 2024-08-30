@@ -2,13 +2,15 @@
 #include <stdbool.h>
 #include "imageloader.h"
 #include "testlevel.h"
+#include "audiosys.h"
 #define SCR_H 240
 #define SCR_W 320
 #define BLOCKPERSCRNH SCR_H/16
 #define BLOCKPERSCRNW SCR_W/16
+int scale=1;
 int colis;
 bool draw = false;
-int up,down,left,right,start,chrt,run;
+int up,down,left,right,start,chrt,run,chscl;
 int ctr = 0;
 int inputStateChanged;
 int camx=0,camy=0;
@@ -43,13 +45,18 @@ typedef struct entity{
 	Collider col;
 	int onground;
 }Entity;
-SDL_Surface *screen;
+SDL_Surface *screen,*screenscaled;
+signed short midibuf[4096];
     SDL_Surface *playerspr;
 	SDL_Surface *enemyspr;
 	SDL_Surface *tiles;
 	SDL_Surface *bananaspr;
 	
 	SDL_Surface *backg;
+	SDL_AudioSpec wanted;
+	AudioSample *sysdmg;
+	AudioSample *coin;
+	AudioSample *jump;
 	Entity player;
 	Entity enem;
 	Entity banana;
@@ -75,8 +82,8 @@ void drawMapMainLayer(){
 				dstr.x=(j*16)-camx -15;
 				dstr.y=(i*16)-camy;
 				if(srcr.x!=0||srcr.y!=0){
-					printf("Block coords in tilemap: x:%i y:%i\n",srcr.x,srcr.y);
-					printf("Block coords in frame: x:%i y:%i\n",dstr.x,dstr.y);
+					/*printf("Block coords in tilemap: x:%i y:%i\n",srcr.x,srcr.y);
+					printf("Block coords in frame: x:%i y:%i\n",dstr.x,dstr.y);*/
 				}
 				SDL_BlitSurface( tiles, &srcr, screen, &dstr );
 			}
@@ -331,6 +338,7 @@ void doPlayer(int run){
 	if(up){
 		if(player.onground){
 			player.speed.y=-300;
+			audio_playsample(jump,255);
 		}
 	}
 	}else{
@@ -348,6 +356,9 @@ void doPlayer(int run){
 	}
 
 	checkEntityGroundCol(&player);
+	//if(player.pos.y>LEVEL_MAX_Y+16){
+		//audio_playsample(sysdmg);
+	//}
 	/*if(down){
 		player.pos.y+=1;
 	}*/
@@ -415,6 +426,7 @@ void doBanana() {
         if ((banana.pos.x - player.pos.x <= 3) && (banana.pos.y - player.pos.y <= 3)) {
             banana.pos.y = -3000;
             draw = true;
+			audio_playsample(coin,80);
         } else if (draw == false) {
             // Überprüfen, ob genug Zeit vergangen ist, um den nächsten Frame anzuzeigen
             if (currentTime > lastFrameTime + 100) { // 100 ms zwischen den Frames
@@ -435,6 +447,7 @@ void doBanana() {
         if ((player.pos.x - banana.pos.x <= 3) && (banana.pos.y - player.pos.y <= 3)) {
             banana.pos.y = -3000;
             draw = true;
+			audio_playsample(coin,80);
         } else if (draw == false) {
             // Überprüfen, ob genug Zeit vergangen ist, um den nächsten Frame anzuzeigen
             if (currentTime > lastFrameTime + 100) { // 100 ms zwischen den Frames
@@ -468,6 +481,104 @@ void changeChrt(){
 	player.anims[0].pos.x=64;
 	player.anims[0].dim.x=64;
 }
+void changeVideoMode(){
+	if (screen != screenscaled)
+	{
+		SDL_FreeSurface(screen);
+	}
+	screenscaled = SDL_SetVideoMode(SCR_W*scale,SCR_H*scale,32,SDL_SWSURFACE);
+	screen=scale>1 ? SDL_CreateRGBSurface(SDL_SWSURFACE, SCR_W, SCR_H, 32, 0, 0, 0, 0) : screenscaled;
+}
+void scaleScreen(int scale, uint32_t *src, uint32_t *dst){
+	unsigned int i,j;
+	unsigned int temp;
+	unsigned int scalewidth=SCR_W*scale;
+	if(scale==2){
+		for(i=0;i<SCR_H;i++){
+			for(j=0;j<SCR_W;j++){
+				temp=*src++;
+				
+				*(dst+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*dst++=temp;
+				
+			}
+			dst+=scalewidth;
+		}
+	}else if(scale==3){
+		for(i=0;i<SCR_H;i++){
+			for(j=0;j<SCR_W;j++){
+				temp=*src++;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+			}
+			dst+=scalewidth+scalewidth;
+		}
+		
+		
+	}else if(scale==4){
+		for(i=0;i<SCR_H;i++){
+			for(j=0;j<SCR_W;j++){
+				temp=*src++;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+				*(dst+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth)=temp;
+				*(dst+scalewidth+scalewidth+scalewidth)=temp;
+				*dst++=temp;
+				
+			}
+			dst+=scalewidth+scalewidth+scalewidth;
+		}
+	
+	}
+	
+}
+void drawScreen(){
+	if(scale>1){
+		scaleScreen(scale,screen->pixels,screenscaled->pixels);
+		
+	}
+	
+	
+	SDL_Flip( screenscaled );
+}
+
+void fill_audio(void *udata, Uint8 *stream, int len){
+        /* Only play if we have data left */
+        memset(stream,0,len);
+		audio_getsamples((signed short*)stream,len/2);
+		if(len<=4096){
+			audio_getmidisamples(midibuf, len/2);
+			SDL_MixAudio(stream, midibuf, len, 80);
+		}
+}
 
 int main(int argc , char **argv)
 {
@@ -480,6 +591,22 @@ int main(int argc , char **argv)
         fprintf(stderr,"SDL error %s\n", SDL_GetError());
         return 2;
     }
+	
+	wanted.freq = 22050;
+    wanted.format = AUDIO_S16;
+    wanted.channels = 1;    /* 1 = mono, 2 = stereo */
+    wanted.samples = 1024;  /* Good low-latency value for callback */
+    wanted.callback = fill_audio;
+    wanted.userdata = NULL;
+	//loadMusic("tetris.mod");
+    /* Open the audio device, forcing the desired format */
+	audio_initmidi();
+    if ( SDL_OpenAudio(&wanted, NULL) < 0 ) {
+        fprintf(stderr, "Audio Error: %s\n", SDL_GetError());
+        return(-1);
+    }
+	SDL_PauseAudio(0);
+	audio_loadmidi("MUS_JNG1.mid");
     bananaspr = loadQoi("entities.qoi");
     playerspr=loadQoi("PLAYER.qoi");
 	enemyspr=loadQoi("PLAYER2.qoi");
@@ -491,8 +618,13 @@ int main(int argc , char **argv)
 	
 	tiles=loadQoi("tiles.qoi");
 	backg=loadJpeg("JUNGLE.jpg");
+	sysdmg=audio_load2BitAdpcmFromFS("sysdmg.sfx");
+	coin=audio_load2BitAdpcmFromFS("coin.sfx");
+	jump=audio_load2BitAdpcmFromFS("jump.sfx");
+	//audio_playsample(sysdmg);
     //window = SDL_CreateWindow("SSFN normal renderer bitmap font test",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,800,600,0);
-    screen = SDL_SetVideoMode(SCR_W,SCR_H,32,SDL_SWSURFACE);
+    //screen = SDL_SetVideoMode(SCR_W,SCR_H,32,SDL_SWSURFACE);
+	changeVideoMode();
     //memset(screen->pixels, 0xF8, screen->pitch*screen->h);
 	initPlayer();
 	initEnem();
@@ -531,6 +663,11 @@ int main(int argc , char **argv)
 						case SDLK_F2:
 								player.pos.x=0;
 								player.pos.y=300;
+							break;
+						case SDLK_F3:
+								scale++;
+								if(scale>4) scale=1;
+								changeVideoMode();
 							break;
 						case SDLK_SPACE:
 								run = 1;
@@ -578,7 +715,13 @@ int main(int argc , char **argv)
 			 	 
 		}
 		if(player.pos.y > 500){
-				SDL_Quit();
+				static int sysdmg_voicenum = -1;
+				if(sysdmg_voicenum==-1){
+					sysdmg_voicenum = audio_playsample(sysdmg,255);
+				}
+				if(!audio_stillplaying(sysdmg_voicenum)){
+					SDL_Quit();
+				}
 		}
 		calcDelta();
 		doEnemy();
@@ -615,7 +758,8 @@ int main(int argc , char **argv)
 		drawEntity(&player);
 		}
 		}
-		SDL_Flip( screen );
+		
+		drawScreen();
 		//SDL_Delay(10);
 		
 		//camx++;
